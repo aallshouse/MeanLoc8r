@@ -8,7 +8,82 @@ var sendJsonResponse = function(res, status, content){
 };
 
 module.exports.create = function(req, res){
-  sendJsonResponse(res, 200, {"status": "success"});
+  var locationid = req.params.locationid;
+  if(!locationid){
+    sendJsonResponse(res, 404, {"message": "Not found, locationid required"});
+    return;
+  }
+
+  loc.findById(locationid)
+    .select('reviews')
+    .exec(
+      function(err, location){
+        if(err){
+          sendJsonResponse(res, 400, err);
+          return;
+        }
+
+        doAddReview(req, res, location);
+      }
+    )
+};
+
+var doAddReview = function (req, res, location){
+  if(!location){
+    sendJsonResponse(res, 400, {
+      "message": "locationid not found"
+    });
+    return;
+  }
+
+  location.reviews.push({
+    author: req.body.author,
+    rating: req.body.rating,
+    reviewText: req.body.reviewText
+  });
+  location.save(function(err, location){
+    if(err){
+      sendJsonResponse(res, 400, err);
+      return;
+    }
+
+    updateAverageRating(location._id);
+    var thisReview = location.reviews[location.reviews.length - 1];
+    sendJsonResponse(res, 201, thisReview);
+  });
+};
+
+var updateAverageRating = function(locationid){
+  loc.findById(locationid)
+    .select('rating reviews')
+    .exec(
+      function(err, location){
+        if(!err){
+          doSetAverageRating(location);
+        }
+      }
+    )
+};
+
+var doSetAverageRating = function(location){
+  var i, reviewCount, ratingAverage, ratingTotal;
+  if(location.reviews && location.reviews.length > 0){
+    reviewCount = location.reviews.length;
+    ratingTotal = 0;
+    for(i = 0; i < reviewCount; i++){
+      ratingTotal = ratingTotal + location.reviews[i].rating;
+    }
+    ratingAverage = parseInt(ratingTotal / reviewCount, 10);
+    location.rating = ratingAverage;
+    location.save(function(err){
+      if(err){
+        console.log(err);
+        return;
+      }
+
+      console.log("Average rating updated to", ratingAverage);
+    })
+  }
 };
 
 module.exports.read = function(req, res){
